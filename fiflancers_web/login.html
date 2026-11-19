@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iniciar Sesión | FIFLancers</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body data-page="login">
+    <div class="auth-wrapper">
+        <div class="auth-card">
+            <div class="auth-header">
+                <h1 class="brand-logo">FIF<span>Lancers</span></h1>
+                <p>Inicia sesión para publicar tareas y colaborar en la FIF</p>
+            </div>
+
+            <form id="form-login" class="auth-form" novalidate>
+                <label for="login-correo">Correo electrónico *</label>
+                <input type="email" id="login-correo" placeholder="ej. ana@uaq.mx" required>
+
+                <label for="login-password">Contraseña *</label>
+                <input type="password" id="login-password" placeholder="••••••••" required>
+
+                <button type="submit" id="btn-login" class="btn-primary full-width" disabled>
+                    Entrar a FIFLancers
+                </button>
+            </form>
+
+            <div id="auth-mensaje" class="status-msg"></div>
+
+            <div class="auth-switch">
+                ¿Aún no tienes cuenta? <a href="registro.html">Regístrate y verifica tu correo aquí</a>
+            </div>
+
+            <div class="demo-credentials">
+                <small><strong>Cuentas de prueba verificadas:</strong><br>
+                • ana@uaq.mx / Ana123!<br>
+                • carlos@uaq.mx / Carlos123!</small>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

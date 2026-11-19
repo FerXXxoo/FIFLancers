@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crear Cuenta | FIFLancers</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body data-page="registro">
+    <div class="auth-wrapper">
+        <div class="auth-card">
+            <div class="auth-header">
+                <h1 class="brand-logo">FIF<span>Lancers</span></h1>
+                <p>Crea tu perfil profesional de estudiante FIF - UAQ</p>
+            </div>
+
+            <form id="form-registro" class="auth-form" novalidate>
+                <label for="reg-nombre">Nombre completo *</label>
+                <input type="text" id="reg-nombre" placeholder="Ej. Brian Delgado" required>
+
+                <label for="reg-correo">Correo electrónico *</label>
+                <input type="email" id="reg-correo" placeholder="ej. brian@uaq.mx" required>
+
+                <label for="reg-password">Contraseña (mínimo 6 caracteres) *</label>
+                <input type="password" id="reg-password" placeholder="Crea una contraseña segura" required>
+
+                <label for="reg-carrera">Carrera / Semestre *</label>
+                <input type="text" id="reg-carrera" placeholder="Ej. Ingeniería en Computación - FIF" required>
+
+                <label for="reg-habilidades">Habilidades principales *</label>
+                <input type="text" id="reg-habilidades" placeholder="Ej. Python, FastAPI, SQL, CSS" required>
+
+                <label for="reg-bio">Descripción de tu perfil *</label>
+                <textarea id="reg-bio" rows="2" placeholder="Cuéntales a los creadores en qué puedes ayudar..." required></textarea>
+
+                <button type="submit" id="btn-registro" class="btn-primary full-width" disabled>
+                    Registrarse y Generar Código
+                </button>
+            </form>
+
+            <form id="form-verificar" class="auth-form hidden" novalidate>
+                <div class="verify-banner" id="banner-codigo-demo"></div>
+
+                <label for="ver-correo">Correo a verificar *</label>
+                <input type="email" id="ver-correo" readonly required>
+
+                <label for="ver-codigo">Código de verificación (6 dígitos) *</label>
+                <input type="text" id="ver-codigo" placeholder="123456" maxlength="6" required>
+
+                <button type="submit" id="btn-verificar" class="btn-primary full-width" disabled>
+                    Verificar Correo
+                </button>
+            </form>
+
+            <div id="auth-mensaje" class="status-msg"></div>
+
+            <div class="auth-switch">
+                ¿Ya tienes cuenta verificada? <a href="login.html">Inicia sesión aquí</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Publicar Tarea | FIFLancers</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body data-page="publicar">
+    <header class="navbar">
+        <div class="nav-content">
+            <div class="nav-left">
+                <a href="index.html" class="logo" title="Ir a la ventana principal de tareas">
+                    FIF<span>Lancers</span>
+                </a>
+            </div>
+            <nav class="nav-links">
+                <a href="index.html" class="nav-item">Inicio (Tareas)</a>
+                <a href="publicar.html" class="nav-item active">Publicar Tarea</a>
+                <a href="mis-tareas.html" class="nav-item">Mis Tareas y Postulaciones</a>
+                <button type="button" class="btn-logout" onclick="cerrarSesion()">Salir</button>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container">
+        <aside class="sidebar-left">
+            <div class="card profile-card">
+                <div class="profile-banner"></div>
+                <div class="avatar-circle" id="perfil-iniciales">U</div>
+                <h3 id="perfil-nombre">Usuario</h3>
+                <p class="profile-career" id="perfil-carrera">FIF - UAQ</p>
+                <div id="perfil-reputacion" class="rating-pill">Sin reseñas aún</div>
+                <hr class="divider">
+                <div class="profile-details">
+                    <strong>Habilidades:</strong>
+                    <p id="perfil-habilidades">-</p>
+                    <strong>Sobre mí:</strong>
+                    <p id="perfil-bio">-</p>
+                </div>
+            </div>
+        </aside>
+
+        <section class="feed-center">
+            <div class="card post-box">
+                <h2>Publicar una Nueva Tarea</h2>
+                <p class="task-meta" style="margin-bottom: 16px;">
+                    Completa todos los campos obligatorios (título, descripción, requisitos y fecha límite) para habilitar el botón de publicación.
+                </p>
+
+                <form id="form-tarea" novalidate>
+                    <label for="titulo">Título de la tarea *</label>
+                    <input type="text" id="titulo" placeholder="Ej. Desarrollo de módulo de autenticación en Python" required>
+
+                    <div class="form-row-2">
+                        <div>
+                            <label for="categoria">Categoría *</label>
+                            <select id="categoria" required>
+                                <option value="">-- Selecciona categoría --</option>
+                                <option value="Desarrollo Web">Desarrollo Web</option>
+                                <option value="Bases de Datos">Bases de Datos</option>
+                                <option value="Diseño UI/UX">Diseño UI/UX</option>
+                                <option value="Sistemas y Redes">Sistemas y Redes</option>
+                                <option value="Documentación / ADRs">Documentación / ADRs</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="fecha-limite">Fecha límite de entrega *</label>
+                            <input type="datetime-local" id="fecha-limite" required>
+                        </div>
+                    </div>
+
+                    <label for="requisitos">Requisitos técnicos y conocimientos necesarios *</label>
+                    <input type="text" id="requisitos" placeholder="Ej. Python 3.10, manejo de SQLite, Clean Architecture" required>
+
+                    <label for="descripcion">Descripción detallada y entregables *</label>
+                    <textarea id="descripcion" rows="4" placeholder="Describe el contexto de la tarea, objetivos y entregables esperados..." required></textarea>
+
+                    <div id="mensaje-tarea" class="status-msg"></div>
+
+                    <div class="post-actions" style="margin-top: 14px;">
+                        <a href="index.html" class="btn-secondary" style="text-decoration:none; margin-top:0;">Volver al Inicio</a>
+                        <button type="submit" id="btn-publicar" class="btn-primary" disabled>
+                            Publicar Tarea
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
