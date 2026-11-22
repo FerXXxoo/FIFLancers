@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ajustes de Perfil | FIFLancers</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body data-page="perfil">
+    <header class="navbar">
+        <div class="nav-content">
+            <div class="nav-left">
+                <a href="index.html" class="logo" title="Ir a la ventana principal de tareas">
+                    FIF<span>Lancers</span>
+                </a>
+            </div>
+            <nav class="nav-links">
+                <a href="index.html" class="nav-item">Inicio</a>
+                <a href="publicar.html" class="nav-item">Publicar Tarea</a>
+                <a href="mis-tareas.html" class="nav-item">Mis Tareas</a>
+                <a href="perfil.html" class="nav-item active">Ajustes de Perfil</a>
+                <button type="button" class="btn-notif" id="btn-notificaciones" onclick="abrirModalNotificaciones()">
+                    Notificaciones <span id="badge-notif" class="notif-count hidden">0</span>
+                </button>
+                <button type="button" class="btn-logout" onclick="cerrarSesion()">Salir</button>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container">
+        <aside class="sidebar-left">
+            <div class="card profile-card">
+                <div class="profile-banner"></div>
+                <div class="avatar-circle" id="perfil-iniciales">U</div>
+                <h3 id="perfil-nombre">Usuario</h3>
+                <p class="profile-career" id="perfil-carrera">FIF - UAQ</p>
+                <div id="perfil-reputacion" class="rating-pill">Sin reseñas aún</div>
+                <hr class="divider">
+                <div class="profile-details">
+                    <strong>Contacto:</strong>
+                    <p id="perfil-contacto">-</p>
+                    <strong>Habilidades:</strong>
+                    <p id="perfil-habilidades">-</p>
+                    <strong>Sobre mí:</strong>
+                    <p id="perfil-bio">-</p>
+                </div>
+            </div>
+        </aside>
+
+        <section class="feed-center">
+            <div class="card post-box">
+                <h2>Ajustes de Perfil</h2>
+                <p class="task-meta" style="margin-bottom: 16px;">
+                    Actualiza tus datos de contacto, carrera y habilidades para recibir mejores recomendaciones de colaboración.
+                </p>
+
+                <form id="form-perfil" novalidate>
+                    <div class="form-row-2">
+                        <div>
+                            <label for="edit-nombre">Nombre completo *</label>
+                            <input type="text" id="edit-nombre" placeholder="Tu nombre completo" required>
+                        </div>
+                        <div>
+                            <label for="edit-carrera">Carrera o programa (FIF - UAQ) *</label>
+                            <select id="edit-carrera" required>
+                                <option value="Ingeniería de Software - FIF UAQ">Ingeniería de Software - FIF UAQ</option>
+                                <option value="Ingeniería en Computación - FIF UAQ">Ingeniería en Computación - FIF UAQ</option>
+                                <option value="Licenciatura en Informática - FIF UAQ">Licenciatura en Informática - FIF UAQ</option>
+                                <option value="Ingeniería en Telecomunicaciones y Redes - FIF UAQ">Ingeniería en Telecomunicaciones y Redes - FIF UAQ</option>
+                                <option value="Licenciatura en Administración de las TI - FIF UAQ">Licenciatura en Administración de las TI - FIF UAQ</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <label for="edit-contacto">Medio de contacto (correo, teléfono, Discord o GitHub) *</label>
+                    <input type="text" id="edit-contacto" placeholder="Ej. correo@uaq.mx | Tel: 442-000-0000" required>
+
+                    <label for="edit-habilidades">Habilidades técnicas (separadas por coma)</label>
+                    <input type="text" id="edit-habilidades" placeholder="Ej. Python, HTML, CSS, Bases de Datos, Redes">
+
+                    <label for="edit-bio">Sobre mí / Experiencia</label>
+                    <textarea id="edit-bio" rows="3" placeholder="Cuéntales a otros compañeros en qué áreas puedes colaborar..."></textarea>
+
+                    <div id="mensaje-perfil" class="status-msg"></div>
+
+                    <div class="post-actions" style="margin-top: 14px;">
+                        <a href="index.html" class="btn-secondary" style="text-decoration:none;">Cancelar</a>
+                        <button type="submit" id="btn-guardar-perfil" class="btn-primary">Guardar Cambios</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card">
+                <h3 style="font-size: 16px; color: var(--primary); margin-bottom: 4px;">Usuarios silenciados</h3>
+                <p class="task-meta" style="margin-bottom: 12px;">
+                    No recibirás alertas ni notificaciones de las personas incluidas en esta lista.
+                </p>
+                <div id="lista-silenciados-perfil">
+                    <p class="task-meta">Cargando lista...</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- MODAL NOTIFICACIONES -->
+    <div id="modal-notificaciones" class="modal-overlay hidden">
+        <div class="modal-box modal-large">
+            <div class="modal-header">
+                <h3>Centro de Notificaciones</h3>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <button type="button" class="btn-danger-sm" onclick="vaciarBandejaNotificaciones()">Vaciar bandeja</button>
+                    <button type="button" class="close-btn" onclick="cerrarModal('modal-notificaciones')">×</button>
+                </div>
+            </div>
+            <div id="contenedor-notificaciones" class="applicants-list"></div>
+            <div id="contenedor-silenciados-modal" style="margin-top: 14px;"></div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inicio - Tareas | FIFLancers</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body data-page="inicio">
+    <header class="navbar">
+        <div class="nav-content">
+            <div class="nav-left">
+                <a href="index.html" class="logo" title="Ir a la ventana principal de tareas">
+                    FIF<span>Lancers</span>
+                </a>
+                <div class="search-bar">
+                    <input type="text" id="buscador-titulo" placeholder="Buscar tareas por título...">
+                </div>
+            </div>
+            <nav class="nav-links">
+                <a href="index.html" class="nav-item active">Inicio</a>
+                <a href="publicar.html" class="nav-item">Publicar Tarea</a>
+                <a href="mis-tareas.html" class="nav-item">Mis Tareas</a>
+                <a href="perfil.html" class="nav-item">Ajustes de Perfil</a>
+                <button type="button" class="btn-notif" id="btn-notificaciones" onclick="abrirModalNotificaciones()">
+                    Notificaciones <span id="badge-notif" class="notif-count hidden">0</span>
+                </button>
+                <button type="button" class="btn-logout" onclick="cerrarSesion()">Salir</button>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container">
+        <aside class="sidebar-left">
+            <div class="card profile-card">
+                <div class="profile-banner"></div>
+                <div class="avatar-circle" id="perfil-iniciales">U</div>
+                <h3 id="perfil-nombre">Usuario</h3>
+                <p class="profile-career" id="perfil-carrera">FIF - UAQ</p>
+                <div id="perfil-reputacion" class="rating-pill">Sin reseñas aún</div>
+                <hr class="divider">
+                <div class="profile-details">
+                    <strong>Contacto:</strong>
+                    <p id="perfil-contacto">-</p>
+                    <strong>Habilidades:</strong>
+                    <p id="perfil-habilidades">-</p>
+                    <strong>Sobre mí:</strong>
+                    <p id="perfil-bio">-</p>
+                </div>
+                <div style="padding: 14px 16px 0 16px; display: flex; flex-direction: column; gap: 8px;">
+                    <a href="publicar.html" class="btn-primary full-width" style="display:block; text-decoration:none;">
+                        + Publicar Nueva Tarea
+                    </a>
+                    <a href="perfil.html" class="btn-secondary full-width" style="display:block; text-decoration:none; text-align:center;">
+                        Editar Perfil
+                    </a>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="rec-card-title">Perfiles afines a ti</div>
+                <p class="rec-subtitle">Compañeros con habilidades o carrera similar</p>
+                <div id="lista-recomendaciones">
+                    <p class="task-meta">Cargando sugerencias...</p>
+                </div>
+            </div>
+        </aside>
+
+        <section class="feed-center">
+            <div class="card filter-bar">
+                <div class="filter-group">
+                    <label for="filtro-categoria">Categoría:</label>
+                    <select id="filtro-categoria">
+                        <option value="Todas">Todas las categorías</option>
+                        <option value="Desarrollo Web">Desarrollo Web</option>
+                        <option value="Bases de Datos">Bases de Datos</option>
+                        <option value="Diseño UI/UX">Diseño UI/UX</option>
+                        <option value="Sistemas y Redes">Sistemas y Redes</option>
+                        <option value="Documentación Técnica">Documentación Técnica</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="filtro-estado">Estado:</label>
+                    <select id="filtro-estado">
+                        <option value="Todos">Todos los estados</option>
+                        <option value="Abierta">Abierta (Disponible)</option>
+                        <option value="Asignada">Asignada</option>
+                        <option value="Finalizada">Finalizada</option>
+                    </select>
+                </div>
+                <button type="button" class="btn-secondary" onclick="limpiarFiltros()">Limpiar</button>
+            </div>
+
+            <div id="lista-tareas" class="tasks-list"></div>
+        </section>
+    </main>
+
+    <!-- MODAL POSTULARSE -->
+    <div id="modal-postular" class="modal-overlay hidden">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>Postularse a la tarea</h3>
+                <button type="button" class="close-btn" onclick="cerrarModal('modal-postular')">×</button>
+            </div>
+            <p id="postular-titulo-tarea" class="modal-subtitle"></p>
+            <form id="form-postular" novalidate>
+                <input type="hidden" id="postular-tarea-id">
+                <label for="postular-mensaje">Mensaje de propuesta para el creador *</label>
+                <textarea id="postular-mensaje" rows="3" placeholder="Explica cómo cumples con los requisitos..." required></textarea>
+                <div id="error-postular" class="status-msg"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="cerrarModal('modal-postular')">Cancelar</button>
+                    <button type="submit" id="btn-enviar-postulacion" class="btn-primary" disabled>Enviar Postulación</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL VER POSTULANTES -->
+    <div id="modal-postulantes" class="modal-overlay hidden">
+        <div class="modal-box modal-large">
+            <div class="modal-header">
+                <h3>Postulantes y Perfiles</h3>
+                <button type="button" class="close-btn" onclick="cerrarModal('modal-postulantes')">×</button>
+            </div>
+            <p id="postulantes-titulo-tarea" class="modal-subtitle"></p>
+            <div id="contenedor-postulantes" class="applicants-list"></div>
+        </div>
+    </div>
+
+    <!-- MODAL CHAT PRIVADO -->
+    <div id="modal-chat" class="modal-overlay hidden">
+        <div class="modal-box modal-large">
+            <div class="modal-header">
+                <div>
+                    <h3 id="chat-titulo-tarea">Chat del Proyecto</h3>
+                    <small class="chat-subtitle">Conversación privada entre Creador y Prestador asignado</small>
+                </div>
+                <button type="button" class="close-btn" onclick="cerrarChat()">×</button>
+            </div>
+            <div id="chat-mensajes" class="chat-messages"></div>
+            <form id="form-chat" class="chat-input-area" novalidate>
+                <input type="text" id="chat-texto" placeholder="Escribe un mensaje..." required autocomplete="off">
+                <button type="submit" id="btn-enviar-chat" class="btn-primary" disabled>Enviar</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL DEJAR RESEÑA -->
+    <div id="modal-resena" class="modal-overlay hidden">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>Calificar Experiencia</h3>
+                <button type="button" class="close-btn" onclick="cerrarModal('modal-resena')">×</button>
+            </div>
+            <p id="resena-titulo-tarea" class="modal-subtitle"></p>
+            <form id="form-resena" novalidate>
+                <input type="hidden" id="resena-tarea-id">
+                <label for="resena-calificacion">Calificación (1 a 5 estrellas) *</label>
+                <select id="resena-calificacion" required>
+                    <option value="">-- Selecciona una puntuación --</option>
+                    <option value="5">★★★★★ (5 - Excelente)</option>
+                    <option value="4">★★★★☆ (4 - Muy bueno)</option>
+                    <option value="3">★★★☆☆ (3 - Aceptable)</option>
+                    <option value="2">★★☆☆☆ (2 - Regular)</option>
+                    <option value="1">★☆☆☆☆ (1 - Deficiente)</option>
+                </select>
+
+                <label for="resena-comentario">Comentario sobre el trabajo realizado *</label>
+                <textarea id="resena-comentario" rows="3" placeholder="Comparte tu experiencia colaborando en esta tarea..." required></textarea>
+
+                <div id="error-resena" class="status-msg"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="cerrarModal('modal-resena')">Cancelar</button>
+                    <button type="submit" id="btn-enviar-resena" class="btn-primary" disabled>Publicar Reseña</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL NOTIFICACIONES -->
+    <div id="modal-notificaciones" class="modal-overlay hidden">
+        <div class="modal-box modal-large">
+            <div class="modal-header">
+                <h3>Centro de Notificaciones</h3>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <button type="button" class="btn-danger-sm" onclick="vaciarBandejaNotificaciones()">Vaciar bandeja</button>
+                    <button type="button" class="close-btn" onclick="cerrarModal('modal-notificaciones')">×</button>
+                </div>
+            </div>
+            <div id="contenedor-notificaciones" class="applicants-list"></div>
+            <div id="contenedor-silenciados-modal" style="margin-top: 14px;"></div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
