@@ -1,7 +1,7 @@
 import hashlib
 import sqlite3
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from domain.entidades import (
     Usuario,
@@ -20,6 +20,7 @@ from application.interfaces import (
     IMensajeRepository,
     INotificacionRepository,
     IResenaRepository,
+    ISilencioRepository,
 )
 
 
@@ -43,6 +44,7 @@ def inicializar_bd(db_path: str = "database.db") -> None:
             Correo TEXT UNIQUE NOT NULL,
             PasswordHash TEXT NOT NULL,
             Carrera TEXT NOT NULL,
+            Contacto TEXT NOT NULL DEFAULT '',
             Habilidades TEXT NOT NULL,
             Bio TEXT NOT NULL,
             Activo INTEGER NOT NULL DEFAULT 0,
@@ -50,6 +52,11 @@ def inicializar_bd(db_path: str = "database.db") -> None:
         )
         """
     )
+
+    try:
+        c.execute("ALTER TABLE Usuarios ADD COLUMN Contacto TEXT NOT NULL DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
 
     c.execute(
         """
@@ -102,6 +109,7 @@ def inicializar_bd(db_path: str = "database.db") -> None:
         CREATE TABLE IF NOT EXISTS Notificaciones (
             Id TEXT PRIMARY KEY,
             UsuarioId TEXT NOT NULL,
+            OrigenUsuarioId TEXT,
             Titulo TEXT NOT NULL,
             Mensaje TEXT NOT NULL,
             Leida INTEGER NOT NULL DEFAULT 0,
@@ -110,6 +118,11 @@ def inicializar_bd(db_path: str = "database.db") -> None:
         )
         """
     )
+
+    try:
+        c.execute("ALTER TABLE Notificaciones ADD COLUMN OrigenUsuarioId TEXT")
+    except sqlite3.OperationalError:
+        pass
 
     c.execute(
         """
@@ -124,6 +137,20 @@ def inicializar_bd(db_path: str = "database.db") -> None:
             FOREIGN KEY (TareaId) REFERENCES Tareas(Id),
             FOREIGN KEY (AutorId) REFERENCES Usuarios(Id),
             FOREIGN KEY (ReceptorId) REFERENCES Usuarios(Id)
+        )
+        """
+    )
+
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS UsuariosSilenciados (
+            Id TEXT PRIMARY KEY,
+            UsuarioId TEXT NOT NULL,
+            SilenciadoId TEXT NOT NULL,
+            Fecha TEXT NOT NULL,
+            UNIQUE(UsuarioId, SilenciadoId),
+            FOREIGN KEY (UsuarioId) REFERENCES Usuarios(Id),
+            FOREIGN KEY (SilenciadoId) REFERENCES Usuarios(Id)
         )
         """
     )
@@ -144,6 +171,7 @@ def sembrar_datos_iniciales(db_path: str = "database.db") -> None:
             "admin@fiflancers.mx",
             validador.hashear("Admin123!"),
             "Administración Plataforma - FIF UAQ",
+            "admin@fiflancers.mx",
             "Gestión, Arquitectura de Software, Python",
             "Cuenta administrativa de FIFLancers.",
             1,
@@ -155,7 +183,8 @@ def sembrar_datos_iniciales(db_path: str = "database.db") -> None:
             "ana@uaq.mx",
             validador.hashear("Ana123!"),
             "Ingeniería de Software - FIF UAQ",
-            "FastAPI, Clean Architecture, SQLite, Git",
+            "ana@uaq.mx | Discord: anasofia_dev",
+            "Python, FastAPI, Clean Architecture, SQLite, Git",
             "Busco colaboradores para proyectos de desarrollo web y arquitectura.",
             1,
             None,
@@ -166,26 +195,39 @@ def sembrar_datos_iniciales(db_path: str = "database.db") -> None:
             "carlos@uaq.mx",
             validador.hashear("Carlos123!"),
             "Ingeniería en Computación - FIF UAQ",
-            "Frontend, CSS, JavaScript, Redes",
+            "carlos@uaq.mx | Tel: 442-123-4567",
+            "Frontend, HTML, CSS, JavaScript, Redes",
             "Desarrollador web apasionado por interfaces limpias y sistemas distribuidos.",
+            1,
+            None,
+        ),
+        (
+            "323e4567-e89b-12d3-a456-426614174000",
+            "Valeria López",
+            "valeria@uaq.mx",
+            validador.hashear("Valeria123!"),
+            "Ingeniería de Software - FIF UAQ",
+            "valeria@uaq.mx | GitHub: @valelopez",
+            "Python, SQLite, JavaScript, HTML, CSS",
+            "Me interesa colaborar en aplicaciones web completas y bases de datos.",
             1,
             None,
         ),
     ]
 
     c.executemany(
-        "INSERT OR IGNORE INTO Usuarios VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT OR IGNORE INTO Usuarios VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         usuarios_base,
     )
 
-    ahora = datetime.utcnow()
+    ahora = datetime.now(timezone.utc).replace(tzinfo=None)
     tareas_base = [
         (
             "333e4567-e89b-12d3-a456-426614174001",
             "123e4567-e89b-12d3-a456-426614174000",
-            "Desarrollo de API REST con Clean Architecture",
-            "Necesito apoyo para implementar casos de uso y pruebas unitarias en Python para la materia de Ingeniería de Software.",
-            "Python 3.10+, FastAPI, conocimientos de capas Domain/Application/Infrastructure.",
+            "Desarrollo de API REST en Python",
+            "Necesito apoyo para implementar rutas y pruebas unitarias en Python para un proyecto escolar.",
+            "Python 3.10+, FastAPI, manejo básico de JSON y Git.",
             (ahora + timedelta(days=7)).isoformat(),
             "Desarrollo Web",
             "Abierta",
@@ -241,17 +283,33 @@ class UsuarioRepositorySQLite(IUsuarioRepository):
     def __init__(self, db_path: str = "database.db"):
         self.db_path = db_path
 
+    def _mapear(self, row) -> Usuario:
+        contacto = row[5] if row[5] else row[2]
+        return Usuario(
+            id=uuid.UUID(row[0]),
+            nombre=row[1],
+            correo=row[2],
+            password_hash=row[3],
+            carrera=row[4],
+            contacto=contacto,
+            habilidades=row[6],
+            bio=row[7],
+            activo=bool(row[8]),
+            codigo_verificacion=row[9],
+        )
+
     def guardar(self, usuario: Usuario) -> None:
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
         c.execute(
-            "INSERT INTO Usuarios VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO Usuarios VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 str(usuario.id),
                 usuario.nombre,
                 usuario.correo,
                 usuario.password_hash,
                 usuario.carrera,
+                usuario.contacto,
                 usuario.habilidades,
                 usuario.bio,
                 1 if usuario.activo else 0,
@@ -267,12 +325,13 @@ class UsuarioRepositorySQLite(IUsuarioRepository):
         c.execute(
             """
             UPDATE Usuarios
-            SET Nombre=?, Carrera=?, Habilidades=?, Bio=?, Activo=?, CodigoVerificacion=?
+            SET Nombre=?, Carrera=?, Contacto=?, Habilidades=?, Bio=?, Activo=?, CodigoVerificacion=?
             WHERE Id=?
             """,
             (
                 usuario.nombre,
                 usuario.carrera,
+                usuario.contacto,
                 usuario.habilidades,
                 usuario.bio,
                 1 if usuario.activo else 0,
@@ -287,47 +346,42 @@ class UsuarioRepositorySQLite(IUsuarioRepository):
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
         c.execute(
-            "SELECT Id, Nombre, Correo, PasswordHash, Carrera, Habilidades, Bio, Activo, CodigoVerificacion FROM Usuarios WHERE Id=?",
+            """
+            SELECT Id, Nombre, Correo, PasswordHash, Carrera, Contacto, Habilidades, Bio, Activo, CodigoVerificacion
+            FROM Usuarios WHERE Id=?
+            """,
             (str(id),),
         )
         row = c.fetchone()
         conn.close()
-        if row:
-            return Usuario(
-                id=uuid.UUID(row[0]),
-                nombre=row[1],
-                correo=row[2],
-                password_hash=row[3],
-                carrera=row[4],
-                habilidades=row[5],
-                bio=row[6],
-                activo=bool(row[7]),
-                codigo_verificacion=row[8],
-            )
-        return None
+        return self._mapear(row) if row else None
 
     def obtener_por_correo(self, correo: str) -> Optional[Usuario]:
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
         c.execute(
-            "SELECT Id, Nombre, Correo, PasswordHash, Carrera, Habilidades, Bio, Activo, CodigoVerificacion FROM Usuarios WHERE Correo=?",
+            """
+            SELECT Id, Nombre, Correo, PasswordHash, Carrera, Contacto, Habilidades, Bio, Activo, CodigoVerificacion
+            FROM Usuarios WHERE Correo=?
+            """,
             (correo.strip().lower(),),
         )
         row = c.fetchone()
         conn.close()
-        if row:
-            return Usuario(
-                id=uuid.UUID(row[0]),
-                nombre=row[1],
-                correo=row[2],
-                password_hash=row[3],
-                carrera=row[4],
-                habilidades=row[5],
-                bio=row[6],
-                activo=bool(row[7]),
-                codigo_verificacion=row[8],
-            )
-        return None
+        return self._mapear(row) if row else None
+
+    def listar_todos(self) -> List[Usuario]:
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT Id, Nombre, Correo, PasswordHash, Carrera, Contacto, Habilidades, Bio, Activo, CodigoVerificacion
+            FROM Usuarios WHERE Activo=1
+            """
+        )
+        rows = c.fetchall()
+        conn.close()
+        return [self._mapear(r) for r in rows]
 
 
 class TareaRepositorySQLite(ITareaRepository):
@@ -528,6 +582,32 @@ class MensajeRepositorySQLite(IMensajeRepository):
         conn.commit()
         conn.close()
 
+    def obtener_por_id(self, mensaje_id: uuid.UUID) -> Optional[Mensaje]:
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute(
+            "SELECT Id, TareaId, EmisorId, Contenido, FechaEnvio FROM Mensajes WHERE Id=?",
+            (str(mensaje_id),),
+        )
+        row = c.fetchone()
+        conn.close()
+        if row:
+            return Mensaje(
+                id=uuid.UUID(row[0]),
+                tarea_id=uuid.UUID(row[1]),
+                emisor_id=uuid.UUID(row[2]),
+                contenido=row[3],
+                fecha_envio=datetime.fromisoformat(row[4]),
+            )
+        return None
+
+    def eliminar(self, mensaje_id: uuid.UUID) -> None:
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute("DELETE FROM Mensajes WHERE Id=?", (str(mensaje_id),))
+        conn.commit()
+        conn.close()
+
     def listar_por_tarea(self, tarea_id: uuid.UUID) -> List[Mensaje]:
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
@@ -557,10 +637,11 @@ class NotificacionRepositorySQLite(INotificacionRepository):
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
         c.execute(
-            "INSERT INTO Notificaciones VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO Notificaciones VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 str(notificacion.id),
                 str(notificacion.usuario_id),
+                str(notificacion.origen_usuario_id) if notificacion.origen_usuario_id else None,
                 notificacion.titulo,
                 notificacion.mensaje,
                 1 if notificacion.leida else 0,
@@ -574,7 +655,10 @@ class NotificacionRepositorySQLite(INotificacionRepository):
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
         c.execute(
-            "SELECT Id, UsuarioId, Titulo, Mensaje, Leida, Fecha FROM Notificaciones WHERE UsuarioId=? ORDER BY Fecha DESC LIMIT 20",
+            """
+            SELECT Id, UsuarioId, OrigenUsuarioId, Titulo, Mensaje, Leida, Fecha
+            FROM Notificaciones WHERE UsuarioId=? ORDER BY Fecha DESC LIMIT 30
+            """,
             (str(usuario_id),),
         )
         rows = c.fetchall()
@@ -583,10 +667,11 @@ class NotificacionRepositorySQLite(INotificacionRepository):
             Notificacion(
                 id=uuid.UUID(r[0]),
                 usuario_id=uuid.UUID(r[1]),
-                titulo=r[2],
-                mensaje=r[3],
-                leida=bool(r[4]),
-                fecha=datetime.fromisoformat(r[5]),
+                origen_usuario_id=uuid.UUID(r[2]) if r[2] else None,
+                titulo=r[3],
+                mensaje=r[4],
+                leida=bool(r[5]),
+                fecha=datetime.fromisoformat(r[6]),
             )
             for r in rows
         ]
@@ -598,6 +683,23 @@ class NotificacionRepositorySQLite(INotificacionRepository):
             "UPDATE Notificaciones SET Leida=1 WHERE UsuarioId=?",
             (str(usuario_id),),
         )
+        conn.commit()
+        conn.close()
+
+    def eliminar(self, notificacion_id: uuid.UUID, usuario_id: uuid.UUID) -> None:
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute(
+            "DELETE FROM Notificaciones WHERE Id=? AND UsuarioId=?",
+            (str(notificacion_id), str(usuario_id)),
+        )
+        conn.commit()
+        conn.close()
+
+    def vaciar_por_usuario(self, usuario_id: uuid.UUID) -> None:
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute("DELETE FROM Notificaciones WHERE UsuarioId=?", (str(usuario_id),))
         conn.commit()
         conn.close()
 
@@ -690,3 +792,53 @@ class ResenaRepositorySQLite(IResenaRepository):
             )
             for r in rows
         ]
+
+
+class SilencioRepositorySQLite(ISilencioRepository):
+    def __init__(self, db_path: str = "database.db"):
+        self.db_path = db_path
+
+    def silenciar(self, usuario_id: uuid.UUID, silenciado_id: uuid.UUID) -> None:
+        if usuario_id == silenciado_id:
+            raise ValueError("No puedes silenciarte a ti mismo.")
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        ahora = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+        c.execute(
+            "INSERT OR IGNORE INTO UsuariosSilenciados VALUES (?, ?, ?, ?)",
+            (str(uuid.uuid4()), str(usuario_id), str(silenciado_id), ahora),
+        )
+        conn.commit()
+        conn.close()
+
+    def quitar_silencio(self, usuario_id: uuid.UUID, silenciado_id: uuid.UUID) -> None:
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute(
+            "DELETE FROM UsuariosSilenciados WHERE UsuarioId=? AND SilenciadoId=?",
+            (str(usuario_id), str(silenciado_id)),
+        )
+        conn.commit()
+        conn.close()
+
+    def esta_silenciado(self, usuario_id: uuid.UUID, origen_id: uuid.UUID) -> bool:
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute(
+            "SELECT 1 FROM UsuariosSilenciados WHERE UsuarioId=? AND SilenciadoId=?",
+            (str(usuario_id), str(origen_id)),
+        )
+        existe = c.fetchone() is not None
+        conn.close()
+        return existe
+
+    def listar_silenciados_ids(self, usuario_id: uuid.UUID) -> List[uuid.UUID]:
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute(
+            "SELECT SilenciadoId FROM UsuariosSilenciados WHERE UsuarioId=?",
+            (str(usuario_id),),
+        )
+        rows = c.fetchall()
+        conn.close()
+        return [uuid.UUID(r[0]) for r in rows]

@@ -10,7 +10,7 @@ class RolParticipacion(Enum):
 
 
 class Usuario:
-    """Protege BR-01 / RN-01: Identidad, credenciales y estado activo."""
+    """Protege BR-01 / RN-01: Identidad, credenciales, contacto y estado activo."""
 
     def __init__(
         self,
@@ -19,6 +19,7 @@ class Usuario:
         correo: str,
         password_hash: str,
         carrera: str = "Estudiante FIF - UAQ",
+        contacto: str = "",
         habilidades: str = "Python, HTML/CSS, SQL",
         bio: str = "Disponible para colaborar en proyectos académicos y desarrollo.",
         activo: bool = False,
@@ -38,6 +39,7 @@ class Usuario:
         self.correo = correo.strip().lower()
         self.password_hash = password_hash
         self.carrera = carrera.strip() if carrera else "Estudiante FIF - UAQ"
+        self.contacto = contacto.strip() if contacto and contacto.strip() else self.correo
         self.habilidades = habilidades.strip() if habilidades else ""
         self.bio = bio.strip() if bio else ""
         self.activo = activo
@@ -73,7 +75,6 @@ class Tarea:
         if not fecha_limite:
             raise ValueError("BR-02: La fecha límite es obligatoria.")
 
-        # Normalizar fecha límite a UTC naive para comparar de forma segura
         fl_naive = (
             fecha_limite.replace(tzinfo=None)
             if fecha_limite.tzinfo
@@ -121,7 +122,7 @@ class Postulacion:
         self.usuario_id = usuario_id
         self.tarea_id = tarea_id
         self.rol = rol
-        self.estado = estado  # Pendiente, Aceptada, Rechazada
+        self.estado = estado
         self.mensaje_propuesta = mensaje_propuesta.strip()
 
 
@@ -149,7 +150,7 @@ class Mensaje:
 
 
 class Notificacion:
-    """Entidad de dominio para eventos del ciclo de vida (asignación, finalización, reseñas)."""
+    """Entidad de dominio para eventos del ciclo de vida."""
 
     def __init__(
         self,
@@ -159,11 +160,13 @@ class Notificacion:
         leida: bool = False,
         id: Optional[uuid.UUID] = None,
         fecha: Optional[datetime] = None,
+        origen_usuario_id: Optional[uuid.UUID] = None,
     ):
         if not usuario_id or not mensaje.strip():
             raise ValueError("Usuario y mensaje de notificación obligatorios.")
         self.id = id or uuid.uuid4()
         self.usuario_id = usuario_id
+        self.origen_usuario_id = origen_usuario_id
         self.titulo = titulo.strip()
         self.mensaje = mensaje.strip()
         self.leida = leida

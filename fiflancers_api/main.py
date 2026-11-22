@@ -15,11 +15,14 @@ from infrastructure.sqlite_adapters import (
     MensajeRepositorySQLite,
     NotificacionRepositorySQLite,
     ResenaRepositorySQLite,
+    SilencioRepositorySQLite,
 )
 from application.casos_uso import (
     RegistrarUsuario,
     VerificarCorreo,
     IniciarSesion,
+    ActualizarPerfil,
+    ObtenerPerfilesRecomendados,
     CrearTarea,
     PostularseATarea,
     ObtenerPostulacionesTarea,
@@ -27,9 +30,10 @@ from application.casos_uso import (
     FinalizarTarea,
     CrearResena,
     GestionarChat,
+    GestionarNotificaciones,
 )
 
-app = FastAPI(title="FIFLancers API", version="3.0.0")
+app = FastAPI(title="FIFLancers API", version="3.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -49,28 +53,46 @@ postulaciones_repo = PostulacionRepositorySQLite()
 mensajes_repo = MensajeRepositorySQLite()
 notificaciones_repo = NotificacionRepositorySQLite()
 resenas_repo = ResenaRepositorySQLite()
+silencios_repo = SilencioRepositorySQLite()
 
 registrar_usuario_uc = RegistrarUsuario(usuarios_repo, validador)
 verificar_correo_uc = VerificarCorreo(usuarios_repo)
 iniciar_sesion_uc = IniciarSesion(usuarios_repo, validador)
+actualizar_perfil_uc = ActualizarPerfil(usuarios_repo)
+perfiles_recomendados_uc = ObtenerPerfilesRecomendados(
+    usuarios_repo, resenas_repo, silencios_repo
+)
 crear_tarea_uc = CrearTarea(usuarios_repo, tareas_repo, postulaciones_repo)
 postularse_tarea_uc = PostularseATarea(
-    usuarios_repo, tareas_repo, postulaciones_repo, notificaciones_repo
+    usuarios_repo, tareas_repo, postulaciones_repo, notificaciones_repo, silencios_repo
 )
 obtener_postulaciones_uc = ObtenerPostulacionesTarea(
     usuarios_repo, tareas_repo, postulaciones_repo, resenas_repo
 )
 seleccionar_prestador_uc = SeleccionarPrestador(
-    tareas_repo, postulaciones_repo, notificaciones_repo
+    tareas_repo, postulaciones_repo, notificaciones_repo, silencios_repo
 )
 finalizar_tarea_uc = FinalizarTarea(
-    tareas_repo, postulaciones_repo, notificaciones_repo
+    tareas_repo, postulaciones_repo, notificaciones_repo, silencios_repo
 )
 crear_resena_uc = CrearResena(
-    usuarios_repo, tareas_repo, postulaciones_repo, resenas_repo, notificaciones_repo
+    usuarios_repo,
+    tareas_repo,
+    postulaciones_repo,
+    resenas_repo,
+    notificaciones_repo,
+    silencios_repo,
 )
 gestionar_chat_uc = GestionarChat(
-    usuarios_repo, tareas_repo, postulaciones_repo, mensajes_repo
+    usuarios_repo,
+    tareas_repo,
+    postulaciones_repo,
+    mensajes_repo,
+    notificaciones_repo,
+    silencios_repo,
+)
+gestionar_notificaciones_uc = GestionarNotificaciones(
+    notificaciones_repo, silencios_repo, usuarios_repo
 )
 
 
@@ -88,6 +110,7 @@ class RegistroRequest(BaseModel):
     carrera: str
     habilidades: str
     bio: str
+    contacto: Optional[str] = ""
 
 
 class VerificarCorreoRequest(BaseModel):
@@ -98,6 +121,14 @@ class VerificarCorreoRequest(BaseModel):
 class LoginRequest(BaseModel):
     correo: str
     password: str
+
+
+class PerfilUpdateRequest(BaseModel):
+    nombre: str
+    carrera: str
+    contacto: str
+    habilidades: str
+    bio: str
 
 
 class TareaRequest(BaseModel):
@@ -116,7 +147,7 @@ class PostularRequest(BaseModel):
 
 class SeleccionarPrestadorRequest(BaseModel):
     creador_id: str
-    accion: str  # "Aceptada" o "Rechazada"
+    accion: str
 
 
 class FinalizarTareaRequest(BaseModel):
@@ -134,6 +165,10 @@ class MensajeChatRequest(BaseModel):
     contenido: str
 
 
+class SilenciarRequest(BaseModel):
+    silenciado_id: str
+
+
 @app.post("/api/auth/registro")
 def api_registro(req: RegistroRequest):
     try:
@@ -144,6 +179,7 @@ def api_registro(req: RegistroRequest):
             carrera=req.carrera,
             habilidades=req.habilidades,
             bio=req.bio,
+            contacto=req.contacto or "",
         )
         print(
             f"[VERIFICACIÓN CORREO] Código para {usuario.correo}: {usuario.codigo_verificacion}"
@@ -186,6 +222,7 @@ def api_login(req: LoginRequest):
                 "nombre": usuario.nombre,
                 "correo": usuario.correo,
                 "carrera": usuario.carrera,
+                "contacto": usuario.contacto,
                 "habilidades": usuario.habilidades,
                 "bio": usuario.bio,
                 "promedio_calificacion": promedio,
@@ -194,6 +231,49 @@ def api_login(req: LoginRequest):
         }
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
+
+
+@app.put("/api/usuarios/{usuario_id}/perfil")
+def api_actualizar_perfil(usuario_id: str, req: PerfilUpdateRequest):
+    try:
+        usuario = actualizar_perfil_uc.ejecutar(
+            usuario_id=parsear_uuid(usuario_id),
+            nombre=req.nombre,
+            carrera=req.carrera,
+            contacto=req.contacto,
+            habilidades=req.habilidades,
+            bio=req.bio,
+        )
+        resenas = resenas_repo.listar_por_receptor(usuario.id)
+        promedio = (
+            round(sum(r.calificacion for r in resenas) / len(resenas), 1)
+            if resenas
+            else 0
+        )
+        return {
+            "mensaje": "Perfil actualizado correctamente.",
+            "usuario": {
+                "id": str(usuario.id),
+                "nombre": usuario.nombre,
+                "correo": usuario.correo,
+                "carrera": usuario.carrera,
+                "contacto": usuario.contacto,
+                "habilidades": usuario.habilidades,
+                "bio": usuario.bio,
+                "promedio_calificacion": promedio,
+                "total_resenas": len(resenas),
+            },
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/usuarios/{usuario_id}/recomendados")
+def api_perfiles_recomendados(usuario_id: str):
+    try:
+        return perfiles_recomendados_uc.ejecutar(parsear_uuid(usuario_id))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/tareas")
@@ -226,6 +306,9 @@ def api_listar_tareas(usuario_id: Optional[str] = Query(default=None)):
                 p for p in postulaciones if p.rol == RolParticipacion.PRESTADOR
             ]
             aceptado = next((p for p in prestadores if p.estado == "Aceptada"), None)
+            prestador_usuario = (
+                usuarios_repo.obtener_por_id(aceptado.usuario_id) if aceptado else None
+            )
 
             mi_estado_postulacion = None
             if uid:
@@ -262,6 +345,7 @@ def api_listar_tareas(usuario_id: Optional[str] = Query(default=None)):
                     "creador_id": str(t.creador_id),
                     "creador_nombre": creador.nombre if creador else "Usuario FIF",
                     "creador_carrera": creador.carrera if creador else "",
+                    "asignado_nombre": prestador_usuario.nombre if prestador_usuario else None,
                     "titulo": t.titulo,
                     "descripcion": t.descripcion,
                     "requisitos": t.requisitos,
@@ -369,18 +453,7 @@ def api_crear_resena(tarea_id: str, req: ResenaRequest):
 @app.get("/api/usuarios/{usuario_id}/notificaciones")
 def api_notificaciones(usuario_id: str):
     try:
-        uid = parsear_uuid(usuario_id)
-        notifs = notificaciones_repo.listar_por_usuario(uid)
-        return [
-            {
-                "id": str(n.id),
-                "titulo": n.titulo,
-                "mensaje": n.mensaje,
-                "leida": n.leida,
-                "fecha": n.fecha.isoformat(),
-            }
-            for n in notifs
-        ]
+        return gestionar_notificaciones_uc.listar(parsear_uuid(usuario_id))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -390,6 +463,56 @@ def api_leer_notificaciones(usuario_id: str):
     try:
         notificaciones_repo.marcar_todas_leidas(parsear_uuid(usuario_id))
         return {"mensaje": "Notificaciones marcadas como leídas."}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api/usuarios/{usuario_id}/notificaciones/{notificacion_id}")
+def api_eliminar_notificacion(usuario_id: str, notificacion_id: str):
+    try:
+        gestionar_notificaciones_uc.eliminar(
+            parsear_uuid(usuario_id), parsear_uuid(notificacion_id)
+        )
+        return {"mensaje": "Notificación eliminada."}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api/usuarios/{usuario_id}/notificaciones")
+def api_vaciar_notificaciones(usuario_id: str):
+    try:
+        gestionar_notificaciones_uc.vaciar(parsear_uuid(usuario_id))
+        return {"mensaje": "Bandeja de notificaciones vaciada."}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/usuarios/{usuario_id}/silenciar")
+def api_silenciar_usuario(usuario_id: str, req: SilenciarRequest):
+    try:
+        gestionar_notificaciones_uc.silenciar_usuario(
+            parsear_uuid(usuario_id), parsear_uuid(req.silenciado_id)
+        )
+        return {"mensaje": "Usuario silenciado."}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api/usuarios/{usuario_id}/silenciar/{silenciado_id}")
+def api_quitar_silencio(usuario_id: str, silenciado_id: str):
+    try:
+        gestionar_notificaciones_uc.quitar_silencio(
+            parsear_uuid(usuario_id), parsear_uuid(silenciado_id)
+        )
+        return {"mensaje": "Notificaciones del usuario reactivadas."}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/usuarios/{usuario_id}/silenciados")
+def api_listar_silenciados(usuario_id: str):
+    try:
+        return gestionar_notificaciones_uc.listar_silenciados(parsear_uuid(usuario_id))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -413,5 +536,20 @@ def api_enviar_mensaje_chat(tarea_id: str, req: MensajeChatRequest):
             tarea_id=parsear_uuid(tarea_id),
             contenido=req.contenido,
         )
+    except ValueError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
+@app.delete("/api/tareas/{tarea_id}/chat/{mensaje_id}")
+def api_eliminar_mensaje_chat(
+    tarea_id: str, mensaje_id: str, usuario_id: str = Query(...)
+):
+    try:
+        gestionar_chat_uc.eliminar_mensaje(
+            usuario_id=parsear_uuid(usuario_id),
+            tarea_id=parsear_uuid(tarea_id),
+            mensaje_id=parsear_uuid(mensaje_id),
+        )
+        return {"mensaje": "Mensaje eliminado."}
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))

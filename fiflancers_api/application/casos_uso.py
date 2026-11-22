@@ -1,7 +1,7 @@
 import random
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from domain.entidades import (
     Usuario,
     Tarea,
@@ -18,6 +18,7 @@ from application.interfaces import (
     IMensajeRepository,
     INotificacionRepository,
     IResenaRepository,
+    ISilencioRepository,
     IValidadorCredenciales,
 )
 
@@ -41,6 +42,7 @@ class RegistrarUsuario:
         carrera: str,
         habilidades: str,
         bio: str,
+        contacto: str = "",
     ) -> Usuario:
         if not nombre or not nombre.strip() or not correo or not correo.strip():
             raise ValueError("Todos los campos del registro son obligatorios.")
@@ -60,6 +62,7 @@ class RegistrarUsuario:
             correo=correo,
             password_hash=self.validador.hashear(password),
             carrera=carrera,
+            contacto=contacto.strip() or correo.strip().lower(),
             habilidades=habilidades,
             bio=bio,
             activo=False,
@@ -118,6 +121,109 @@ class IniciarSesion:
             )
 
         return usuario
+
+
+class ActualizarPerfil:
+    """Permite al usuario editar su nombre, carrera, contacto, habilidades y descripción."""
+
+    def __init__(self, usuarios_repo: IUsuarioRepository):
+        self.usuarios = usuarios_repo
+
+    def ejecutar(
+        self,
+        usuario_id: uuid.UUID,
+        nombre: str,
+        carrera: str,
+        contacto: str,
+        habilidades: str,
+        bio: str,
+    ) -> Usuario:
+        usuario = self.usuarios.obtener_por_id(usuario_id)
+        if not usuario or not usuario.activo:
+            raise ValueError("Usuario no encontrado o inactivo.")
+
+        if not nombre.strip() or not carrera.strip() or not contacto.strip():
+            raise ValueError("Nombre, carrera y medio de contacto son obligatorios.")
+
+        usuario.nombre = nombre.strip()
+        usuario.carrera = carrera.strip()
+        usuario.contacto = contacto.strip()
+        usuario.habilidades = habilidades.strip()
+        usuario.bio = bio.strip()
+        self.usuarios.actualizar(usuario)
+        return usuario
+
+
+class ObtenerPerfilesRecomendados:
+    """Recomienda perfiles con habilidades o carrera afines, excluyendo silenciados."""
+
+    def __init__(
+        self,
+        usuarios_repo: IUsuarioRepository,
+        resenas_repo: IResenaRepository,
+        silencios_repo: Optional[ISilencioRepository] = None,
+    ):
+        self.usuarios = usuarios_repo
+        self.resenas = resenas_repo
+        self.silencios = silencios_repo
+
+    def ejecutar(self, usuario_id: uuid.UUID) -> List[Dict[str, Any]]:
+        yo = self.usuarios.obtener_por_id(usuario_id)
+        if not yo:
+            return []
+
+        silenciados = (
+            set(self.silencios.listar_silenciados_ids(usuario_id))
+            if self.silencios
+            else set()
+        )
+        mis_tags = {
+            t.strip().lower() for t in yo.habilidades.split(",") if t.strip()
+        }
+        mi_carrera = yo.carrera.strip().lower()
+
+        candidatos = []
+        for u in self.usuarios.listar_todos():
+            if u.id == usuario_id or u.id in silenciados or u.correo == "admin@fiflancers.mx":
+                continue
+
+            sus_tags_raw = [t.strip() for t in u.habilidades.split(",") if t.strip()]
+            sus_tags_low = {t.lower(): t for t in sus_tags_raw}
+            comunes = [sus_tags_low[k] for k in mis_tags.intersection(sus_tags_low.keys())]
+            misma_carrera = u.carrera.strip().lower() == mi_carrera
+
+            puntaje = len(comunes) * 2 + (1 if misma_carrera else 0)
+            if comunes:
+                motivo = f"Intereses en común: {', '.join(comunes[:3])}"
+            elif misma_carrera:
+                motivo = f"Misma carrera: {u.carrera}"
+            else:
+                motivo = f"Activo en {u.carrera}"
+
+            resenas_u = self.resenas.listar_por_receptor(u.id)
+            promedio = (
+                round(sum(r.calificacion for r in resenas_u) / len(resenas_u), 1)
+                if resenas_u
+                else 0
+            )
+
+            candidatos.append(
+                {
+                    "id": str(u.id),
+                    "nombre": u.nombre,
+                    "carrera": u.carrera,
+                    "contacto": u.contacto,
+                    "habilidades": u.habilidades,
+                    "motivo": motivo,
+                    "puntaje": puntaje,
+                    "promedio_calificacion": promedio,
+                }
+            )
+
+        candidatos.sort(
+            key=lambda x: (x["puntaje"], x["promedio_calificacion"]), reverse=True
+        )
+        return candidatos[:4]
 
 
 class CrearTarea:
@@ -186,11 +292,13 @@ class PostularseATarea:
         tareas_repo: ITareaRepository,
         postulaciones_repo: IPostulacionRepository,
         notificaciones_repo: INotificacionRepository,
+        silencios_repo: Optional[ISilencioRepository] = None,
     ):
         self.usuarios = usuarios_repo
         self.tareas = tareas_repo
         self.postulaciones = postulaciones_repo
         self.notificaciones = notificaciones_repo
+        self.silencios = silencios_repo
 
     def ejecutar(
         self, usuario_id: uuid.UUID, tarea_id: uuid.UUID, mensaje_propuesta: str
@@ -209,18 +317,15 @@ class PostularseATarea:
         if tarea.creador_id == usuario_id:
             raise ValueError("No puedes postularte a tu propia tarea.")
 
-        # RN-04: Una vez asignada o finalizada, deja de aceptar postulaciones
         if tarea.estado != "Abierta":
             raise ValueError(
                 f"RN-04: Esta tarea está '{tarea.estado}' y ya no acepta nuevas postulaciones."
             )
 
-        # Regla de dominio: no aceptar postulaciones después de la fecha límite
         ahora_naive = datetime.now(timezone.utc).replace(tzinfo=None)
         if tarea.fecha_limite <= ahora_naive:
             raise ValueError("La fecha límite de esta tarea ya venció.")
 
-        # BR-03 / RN-02: Un prestador no puede postularse más de una vez a la misma tarea
         previa = self.postulaciones.obtener_por_usuario_y_tarea(usuario_id, tarea_id)
         if previa:
             raise ValueError("BR-03: Ya te has postulado anteriormente a esta tarea.")
@@ -234,13 +339,20 @@ class PostularseATarea:
         )
         self.postulaciones.guardar(postulacion)
 
-        self.notificaciones.guardar(
-            Notificacion(
-                usuario_id=tarea.creador_id,
-                titulo="Nueva postulación recibida",
-                mensaje=f"{usuario.nombre} se ha postulado a tu tarea '{tarea.titulo}'.",
-            )
+        silenciado = (
+            self.silencios.esta_silenciado(tarea.creador_id, usuario_id)
+            if self.silencios
+            else False
         )
+        if not silenciado:
+            self.notificaciones.guardar(
+                Notificacion(
+                    usuario_id=tarea.creador_id,
+                    origen_usuario_id=usuario_id,
+                    titulo="Nueva postulación recibida",
+                    mensaje=f"{usuario.nombre} se ha postulado a tu tarea '{tarea.titulo}'.",
+                )
+            )
         return postulacion
 
 
@@ -296,6 +408,7 @@ class ObtenerPostulacionesTarea:
                                 "id": str(postulante.id),
                                 "nombre": postulante.nombre,
                                 "correo": postulante.correo,
+                                "contacto": postulante.contacto,
                                 "carrera": postulante.carrera,
                                 "habilidades": postulante.habilidades,
                                 "bio": postulante.bio,
@@ -315,10 +428,12 @@ class SeleccionarPrestador:
         tareas_repo: ITareaRepository,
         postulaciones_repo: IPostulacionRepository,
         notificaciones_repo: INotificacionRepository,
+        silencios_repo: Optional[ISilencioRepository] = None,
     ):
         self.tareas = tareas_repo
         self.postulaciones = postulaciones_repo
         self.notificaciones = notificaciones_repo
+        self.silencios = silencios_repo
 
     def ejecutar(
         self, creador_id: uuid.UUID, postulacion_id: uuid.UUID, accion: str
@@ -331,7 +446,6 @@ class SeleccionarPrestador:
         if not tarea:
             raise ValueError("Tarea no encontrada.")
 
-        # BR-04: Solamente el creador de una tarea puede seleccionar al prestador
         if tarea.creador_id != creador_id:
             raise ValueError(
                 "BR-04: Solamente el creador de la tarea puede seleccionar al prestador."
@@ -341,7 +455,6 @@ class SeleccionarPrestador:
             raise ValueError("Acción inválida. Debe ser 'Aceptada' o 'Rechazada'.")
 
         if accion == "Aceptada":
-            # RN-03: Una tarea solo puede ser asignada a un prestador
             if tarea.estado != "Abierta":
                 raise ValueError(
                     "RN-03: Esta tarea ya fue asignada a un prestador o está finalizada."
@@ -353,19 +466,25 @@ class SeleccionarPrestador:
                     if p.id == postulacion.id:
                         self.postulaciones.actualizar_estado(p.id, "Aceptada")
                     elif p.estado == "Pendiente":
-                        # RN-04: Al asignar la tarea, rechaza automáticamente las demás pendientes
                         self.postulaciones.actualizar_estado(p.id, "Rechazada")
 
             self.tareas.actualizar_estado(tarea.id, "Asignada")
             postulacion.estado = "Aceptada"
 
-            self.notificaciones.guardar(
-                Notificacion(
-                    usuario_id=postulacion.usuario_id,
-                    titulo="¡Fuiste seleccionado para una tarea!",
-                    mensaje=f"Has sido asignado a '{tarea.titulo}'. Ya puedes abrir el chat privado.",
-                )
+            silenciado = (
+                self.silencios.esta_silenciado(postulacion.usuario_id, creador_id)
+                if self.silencios
+                else False
             )
+            if not silenciado:
+                self.notificaciones.guardar(
+                    Notificacion(
+                        usuario_id=postulacion.usuario_id,
+                        origen_usuario_id=creador_id,
+                        titulo="¡Fuiste seleccionado para una tarea!",
+                        mensaje=f"Has sido asignado a '{tarea.titulo}'. Ya puedes abrir el chat privado.",
+                    )
+                )
         else:
             self.postulaciones.actualizar_estado(postulacion.id, "Rechazada")
             postulacion.estado = "Rechazada"
@@ -381,10 +500,12 @@ class FinalizarTarea:
         tareas_repo: ITareaRepository,
         postulaciones_repo: IPostulacionRepository,
         notificaciones_repo: INotificacionRepository,
+        silencios_repo: Optional[ISilencioRepository] = None,
     ):
         self.tareas = tareas_repo
         self.postulaciones = postulaciones_repo
         self.notificaciones = notificaciones_repo
+        self.silencios = silencios_repo
 
     def ejecutar(self, creador_id: uuid.UUID, tarea_id: uuid.UUID) -> Tarea:
         tarea = self.tareas.obtener_por_id(tarea_id)
@@ -412,13 +533,20 @@ class FinalizarTarea:
             None,
         )
         if aceptado:
-            self.notificaciones.guardar(
-                Notificacion(
-                    usuario_id=aceptado.usuario_id,
-                    titulo="Tarea marcada como Finalizada",
-                    mensaje=f"El creador finalizó '{tarea.titulo}'. Ya puedes dejar tu reseña.",
-                )
+            silenciado = (
+                self.silencios.esta_silenciado(aceptado.usuario_id, creador_id)
+                if self.silencios
+                else False
             )
+            if not silenciado:
+                self.notificaciones.guardar(
+                    Notificacion(
+                        usuario_id=aceptado.usuario_id,
+                        origen_usuario_id=creador_id,
+                        titulo="Tarea marcada como Finalizada",
+                        mensaje=f"El creador finalizó '{tarea.titulo}'. Ya puedes dejar tu reseña.",
+                    )
+                )
 
         return tarea
 
@@ -433,12 +561,14 @@ class CrearResena:
         postulaciones_repo: IPostulacionRepository,
         resenas_repo: IResenaRepository,
         notificaciones_repo: INotificacionRepository,
+        silencios_repo: Optional[ISilencioRepository] = None,
     ):
         self.usuarios = usuarios_repo
         self.tareas = tareas_repo
         self.postulaciones = postulaciones_repo
         self.resenas = resenas_repo
         self.notificaciones = notificaciones_repo
+        self.silencios = silencios_repo
 
     def ejecutar(
         self,
@@ -455,7 +585,6 @@ class CrearResena:
         if not tarea:
             raise ValueError("La tarea no existe.")
 
-        # BR-05: Una tarea debe estar finalizada antes de generar una reseña
         if tarea.estado != "Finalizada":
             raise ValueError(
                 "BR-05: La tarea debe estar 'Finalizada' antes de poder publicar una reseña."
@@ -473,7 +602,6 @@ class CrearResena:
         if not prestador_aceptado:
             raise ValueError("No existe un prestador asignado en esta tarea.")
 
-        # RN-05: Solo los usuarios que participaron en la tarea pueden realizar reseña
         if autor_id == tarea.creador_id:
             receptor_id = prestador_aceptado.usuario_id
         elif autor_id == prestador_aceptado.usuario_id:
@@ -483,7 +611,6 @@ class CrearResena:
                 "RN-05: Solo el creador y el prestador asignado pueden dejar reseña en esta tarea."
             )
 
-        # UC-15 Paso 4: Verificar que no exista reseña previa del autor para esta tarea
         previa = self.resenas.obtener_por_tarea_y_autor(tarea.id, autor_id)
         if previa:
             raise ValueError("UC-15: Ya has registrado una reseña para esta tarea.")
@@ -497,18 +624,25 @@ class CrearResena:
         )
         self.resenas.guardar(resena)
 
-        self.notificaciones.guardar(
-            Notificacion(
-                usuario_id=receptor_id,
-                titulo="Nueva reseña recibida",
-                mensaje=f"{autor.nombre} te calificó con {calificacion}/5 en '{tarea.titulo}'.",
-            )
+        silenciado = (
+            self.silencios.esta_silenciado(receptor_id, autor_id)
+            if self.silencios
+            else False
         )
+        if not silenciado:
+            self.notificaciones.guardar(
+                Notificacion(
+                    usuario_id=receptor_id,
+                    origen_usuario_id=autor_id,
+                    titulo="Nueva reseña recibida",
+                    mensaje=f"{autor.nombre} te calificó con {calificacion}/5 en '{tarea.titulo}'.",
+                )
+            )
         return resena
 
 
 class GestionarChat:
-    """Chat privado entre el creador y el prestador seleccionado."""
+    """Chat privado entre el creador y el prestador seleccionado, con hora y borrado."""
 
     def __init__(
         self,
@@ -516,13 +650,17 @@ class GestionarChat:
         tareas_repo: ITareaRepository,
         postulaciones_repo: IPostulacionRepository,
         mensajes_repo: IMensajeRepository,
+        notificaciones_repo: Optional[INotificacionRepository] = None,
+        silencios_repo: Optional[ISilencioRepository] = None,
     ):
         self.usuarios = usuarios_repo
         self.tareas = tareas_repo
         self.postulaciones = postulaciones_repo
         self.mensajes = mensajes_repo
+        self.notificaciones = notificaciones_repo
+        self.silencios = silencios_repo
 
-    def _validar_acceso_chat(self, usuario_id: uuid.UUID, tarea_id: uuid.UUID) -> None:
+    def _validar_acceso_chat(self, usuario_id: uuid.UUID, tarea_id: uuid.UUID):
         tarea = self.tareas.obtener_por_id(tarea_id)
         if not tarea:
             raise ValueError("La tarea no existe.")
@@ -543,16 +681,36 @@ class GestionarChat:
         if usuario_id not in ids_permitidos:
             raise ValueError("No tienes permiso para acceder al chat de esta tarea.")
 
+        return tarea, aceptados[0].usuario_id
+
     def enviar_mensaje(
         self, usuario_id: uuid.UUID, tarea_id: uuid.UUID, contenido: str
     ) -> Dict[str, Any]:
-        self._validar_acceso_chat(usuario_id, tarea_id)
+        tarea, prestador_id = self._validar_acceso_chat(usuario_id, tarea_id)
         emisor = self.usuarios.obtener_por_id(usuario_id)
         if not emisor:
             raise ValueError("Emisor no encontrado.")
 
         mensaje = Mensaje(tarea_id=tarea_id, emisor_id=usuario_id, contenido=contenido)
         self.mensajes.guardar(mensaje)
+
+        receptor_id = prestador_id if usuario_id == tarea.creador_id else tarea.creador_id
+        if self.notificaciones:
+            silenciado = (
+                self.silencios.esta_silenciado(receptor_id, usuario_id)
+                if self.silencios
+                else False
+            )
+            if not silenciado:
+                self.notificaciones.guardar(
+                    Notificacion(
+                        usuario_id=receptor_id,
+                        origen_usuario_id=usuario_id,
+                        titulo="Nuevo mensaje en chat",
+                        mensaje=f"{emisor.nombre} te envió un mensaje en '{tarea.titulo}'.",
+                    )
+                )
+
         return {
             "id": str(mensaje.id),
             "emisor_id": str(mensaje.emisor_id),
@@ -578,4 +736,81 @@ class GestionarChat:
                     "fecha_envio": m.fecha_envio.isoformat(),
                 }
             )
+        return salida
+
+    def eliminar_mensaje(
+        self, usuario_id: uuid.UUID, tarea_id: uuid.UUID, mensaje_id: uuid.UUID
+    ) -> None:
+        self._validar_acceso_chat(usuario_id, tarea_id)
+        mensaje = self.mensajes.obtener_por_id(mensaje_id)
+        if not mensaje or mensaje.tarea_id != tarea_id:
+            raise ValueError("El mensaje no existe en este chat.")
+        if mensaje.emisor_id != usuario_id:
+            raise ValueError("Solo puedes eliminar tus propios mensajes.")
+        self.mensajes.eliminar(mensaje_id)
+
+
+class GestionarNotificaciones:
+    """Administra bandeja de notificaciones y silencio de usuarios."""
+
+    def __init__(
+        self,
+        notificaciones_repo: INotificacionRepository,
+        silencios_repo: ISilencioRepository,
+        usuarios_repo: IUsuarioRepository,
+    ):
+        self.notificaciones = notificaciones_repo
+        self.silencios = silencios_repo
+        self.usuarios = usuarios_repo
+
+    def listar(self, usuario_id: uuid.UUID) -> List[Dict[str, Any]]:
+        silenciados = set(self.silencios.listar_silenciados_ids(usuario_id))
+        notifs = self.notificaciones.listar_por_usuario(usuario_id)
+        salida = []
+        for n in notifs:
+            if n.origen_usuario_id and n.origen_usuario_id in silenciados:
+                continue
+            origen = (
+                self.usuarios.obtener_por_id(n.origen_usuario_id)
+                if n.origen_usuario_id
+                else None
+            )
+            salida.append(
+                {
+                    "id": str(n.id),
+                    "origen_usuario_id": str(n.origen_usuario_id) if n.origen_usuario_id else None,
+                    "origen_nombre": origen.nombre if origen else None,
+                    "titulo": n.titulo,
+                    "mensaje": n.mensaje,
+                    "leida": n.leida,
+                    "fecha": n.fecha.isoformat(),
+                }
+            )
+        return salida
+
+    def eliminar(self, usuario_id: uuid.UUID, notificacion_id: uuid.UUID) -> None:
+        self.notificaciones.eliminar(notificacion_id, usuario_id)
+
+    def vaciar(self, usuario_id: uuid.UUID) -> None:
+        self.notificaciones.vaciar_por_usuario(usuario_id)
+
+    def silenciar_usuario(self, usuario_id: uuid.UUID, silenciado_id: uuid.UUID) -> None:
+        self.silencios.silenciar(usuario_id, silenciado_id)
+
+    def quitar_silencio(self, usuario_id: uuid.UUID, silenciado_id: uuid.UUID) -> None:
+        self.silencios.quitar_silencio(usuario_id, silenciado_id)
+
+    def listar_silenciados(self, usuario_id: uuid.UUID) -> List[Dict[str, Any]]:
+        ids = self.silencios.listar_silenciados_ids(usuario_id)
+        salida = []
+        for sid in ids:
+            u = self.usuarios.obtener_por_id(sid)
+            if u:
+                salida.append(
+                    {
+                        "id": str(u.id),
+                        "nombre": u.nombre,
+                        "carrera": u.carrera,
+                    }
+                )
         return salida

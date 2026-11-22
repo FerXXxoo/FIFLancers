@@ -38,6 +38,10 @@ class IUsuarioRepository(ABC):
     def obtener_por_correo(self, correo: str) -> Optional[Usuario]:
         pass
 
+    @abstractmethod
+    def listar_todos(self) -> List[Usuario]:
+        pass
+
 
 class ITareaRepository(ABC):
     @abstractmethod
@@ -87,6 +91,14 @@ class IMensajeRepository(ABC):
         pass
 
     @abstractmethod
+    def obtener_por_id(self, mensaje_id: uuid.UUID) -> Optional[Mensaje]:
+        pass
+
+    @abstractmethod
+    def eliminar(self, mensaje_id: uuid.UUID) -> None:
+        pass
+
+    @abstractmethod
     def listar_por_tarea(self, tarea_id: uuid.UUID) -> List[Mensaje]:
         pass
 
@@ -102,6 +114,14 @@ class INotificacionRepository(ABC):
 
     @abstractmethod
     def marcar_todas_leidas(self, usuario_id: uuid.UUID) -> None:
+        pass
+
+    @abstractmethod
+    def eliminar(self, notificacion_id: uuid.UUID, usuario_id: uuid.UUID) -> None:
+        pass
+
+    @abstractmethod
+    def vaciar_por_usuario(self, usuario_id: uuid.UUID) -> None:
         pass
 
 
@@ -122,4 +142,22 @@ class IResenaRepository(ABC):
 
     @abstractmethod
     def listar_por_tarea(self, tarea_id: uuid.UUID) -> List[Resena]:
+        pass
+
+
+class ISilencioRepository(ABC):
+    @abstractmethod
+    def silenciar(self, usuario_id: uuid.UUID, silenciado_id: uuid.UUID) -> None:
+        pass
+
+    @abstractmethod
+    def quitar_silencio(self, usuario_id: uuid.UUID, silenciado_id: uuid.UUID) -> None:
+        pass
+
+    @abstractmethod
+    def esta_silenciado(self, usuario_id: uuid.UUID, origen_id: uuid.UUID) -> bool:
+        pass
+
+    @abstractmethod
+    def listar_silenciados_ids(self, usuario_id: uuid.UUID) -> List[uuid.UUID]:
         pass
