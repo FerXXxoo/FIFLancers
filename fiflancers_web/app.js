@@ -18,8 +18,7 @@ function escaparHTML(texto) {
 
 function formatearFechaCorta(isoStr) {
     if (!isoStr) return "";
-    const limpia = String(isoStr).replace("T", " ").slice(0, 16);
-    return limpia;
+    return String(isoStr).replace("T", " ").slice(0, 16);
 }
 
 function formatearHora(isoStr) {
@@ -113,7 +112,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 });
 
-// --- LOGIN Y REGISTRO (CON VERIFICACIÓN DE CORREO) ---
+// --- LOGIN Y REGISTRO DIRECTO ---
 function inicializarLogin(form) {
     vincularValidacionBoton("form-login", "btn-login");
     form.addEventListener("submit", async (e) => {
@@ -157,7 +156,10 @@ function inicializarLogin(form) {
 
 function inicializarRegistro(form) {
     vincularValidacionBoton("form-registro", "btn-registro");
-    let correoPendiente = "";
+    const seccionVerif = document.getElementById("seccion-verificacion");
+    const formVerif = document.getElementById("form-verificar");
+    if (seccionVerif) seccionVerif.classList.add("hidden");
+    if (formVerif) formVerif.classList.add("hidden");
 
     form.addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -170,6 +172,11 @@ function inicializarRegistro(form) {
         const msg =
             document.getElementById("mensaje-registro") ||
             form.querySelector(".status-msg");
+
+        if (msg) {
+            msg.style.color = "#0a66c2";
+            msg.textContent = "Registrando cuenta...";
+        }
 
         try {
             const resp = await fetch(`${API_URL}/auth/registro`, {
@@ -186,39 +193,18 @@ function inicializarRegistro(form) {
                 }),
             });
             const data = await resp.json();
-            if (!resp.ok) throw new Error(data.detail || "Error al registrar usuario.");
+            if (!resp.ok) throw new Error(data.detail || "No se pudo completar el registro.");
 
-            correoPendiente = data.correo;
-            const cajaVerif = document.getElementById("seccion-verificacion");
-            const formVerif = document.getElementById("form-verificar");
-            const inputCodigo = document.getElementById("verif-codigo");
-
-            if (cajaVerif) cajaVerif.classList.remove("hidden");
-            if (formVerif) formVerif.classList.remove("hidden");
-            if (inputCodigo && data.codigo_verificacion_demo) {
-                inputCodigo.value = data.codigo_verificacion_demo;
+            if (data.usuario) {
+                guardarUsuarioSesion(data.usuario);
             }
-
             if (msg) {
                 msg.style.color = "#137333";
-                msg.textContent = `Registro creado. Código de verificación: ${data.codigo_verificacion_demo}`;
+                msg.textContent = `Registro exitoso. Código simulado enviado a notificaciones: ${data.codigo_simulado}. Entrando...`;
             }
-
-            if (!cajaVerif && !formVerif && data.codigo_verificacion_demo) {
-                const respV = await fetch(`${API_URL}/auth/verificar`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        correo: data.correo,
-                        codigo: data.codigo_verificacion_demo,
-                    }),
-                });
-                if (respV.ok) {
-                    setTimeout(() => {
-                        window.location.href = "login.html";
-                    }, 1200);
-                }
-            }
+            setTimeout(() => {
+                window.location.href = "index.html";
+            }, 900);
         } catch (err) {
             if (msg) {
                 msg.style.color = "#c92a2a";
@@ -226,44 +212,6 @@ function inicializarRegistro(form) {
             }
         }
     });
-
-    const formVerificar = document.getElementById("form-verificar");
-    if (formVerificar) {
-        formVerificar.addEventListener("submit", async (e) => {
-            e.preventDefault();
-            const correoInput = document.getElementById("verif-correo");
-            const codigoInput = document.getElementById("verif-codigo");
-            const msgVerif =
-                document.getElementById("mensaje-verificacion") ||
-                formVerificar.querySelector(".status-msg");
-
-            const correo = (correoInput?.value || correoPendiente).trim();
-            const codigo = (codigoInput?.value || "").trim();
-
-            try {
-                const resp = await fetch(`${API_URL}/auth/verificar`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ correo, codigo }),
-                });
-                const data = await resp.json();
-                if (!resp.ok) throw new Error(data.detail || "Código incorrecto.");
-
-                if (msgVerif) {
-                    msgVerif.style.color = "#137333";
-                    msgVerif.textContent = "Cuenta activada. Redirigiendo al inicio de sesión...";
-                }
-                setTimeout(() => {
-                    window.location.href = "login.html";
-                }, 1000);
-            } catch (err) {
-                if (msgVerif) {
-                    msgVerif.style.color = "#c92a2a";
-                    msgVerif.textContent = err.message;
-                }
-            }
-        });
-    }
 }
 
 // --- PERFIL LATERAL ---
