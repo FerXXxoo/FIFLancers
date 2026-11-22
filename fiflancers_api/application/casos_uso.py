@@ -24,15 +24,17 @@ from application.interfaces import (
 
 
 class RegistrarUsuario:
-    """UC-01 / BR-01: Registro de usuario con contraseña cifrada y verificación."""
+    """UC-01 / BR-01: Registro directo con cuenta activa, notificación simulada y validación de correo."""
 
     def __init__(
         self,
         usuarios_repo: IUsuarioRepository,
         validador: IValidadorCredenciales,
+        notificaciones_repo: Optional[INotificacionRepository] = None,
     ):
         self.usuarios = usuarios_repo
         self.validador = validador
+        self.notificaciones = notificaciones_repo
 
     def ejecutar(
         self,
@@ -43,7 +45,7 @@ class RegistrarUsuario:
         habilidades: str,
         bio: str,
         contacto: str = "",
-    ) -> Usuario:
+    ) -> Dict[str, Any]:
         if not nombre or not nombre.strip() or not correo or not correo.strip():
             raise ValueError("Todos los campos del registro son obligatorios.")
         if len(password.strip()) < 6:
@@ -51,44 +53,54 @@ class RegistrarUsuario:
         if not carrera.strip() or not habilidades.strip() or not bio.strip():
             raise ValueError("Debes completar tu carrera, habilidades y descripción.")
 
-        existente = self.usuarios.obtener_por_correo(correo)
+        correo_limpio = correo.strip().lower()
+        existente = self.usuarios.obtener_por_correo(correo_limpio)
         if existente:
-            raise ValueError("Ya existe una cuenta registrada con ese correo.")
+            raise ValueError("Ese correo ya está registrado en la base de datos.")
 
-        codigo = str(random.randint(100000, 999999))
+        codigo_simulado = str(random.randint(100000, 999999))
         usuario = Usuario(
             id=uuid.uuid4(),
             nombre=nombre,
-            correo=correo,
+            correo=correo_limpio,
             password_hash=self.validador.hashear(password),
             carrera=carrera,
-            contacto=contacto.strip() or correo.strip().lower(),
+            contacto=contacto.strip() or correo_limpio,
             habilidades=habilidades,
             bio=bio,
-            activo=False,
-            codigo_verificacion=codigo,
+            activo=True,
+            codigo_verificacion=None,
         )
         self.usuarios.guardar(usuario)
-        return usuario
+
+        if self.notificaciones:
+            self.notificaciones.guardar(
+                Notificacion(
+                    usuario_id=usuario.id,
+                    titulo="Código de verificación (simulado)",
+                    mensaje=f"Bienvenido a FIFLancers. Tu código de referencia simulado es: {codigo_simulado}",
+                )
+            )
+
+        return {
+            "usuario": usuario,
+            "codigo_simulado": codigo_simulado,
+        }
 
 
 class VerificarCorreo:
-    """Activa la cuenta del usuario (BR-01)."""
+    """Mantiene compatibilidad si alguna petición invoca verificación, activando la cuenta."""
 
     def __init__(self, usuarios_repo: IUsuarioRepository):
         self.usuarios = usuarios_repo
 
-    def ejecutar(self, correo: str, codigo: str) -> Usuario:
-        if not correo.strip() or not codigo.strip():
-            raise ValueError("Debes ingresar el correo y el código de verificación.")
+    def ejecutar(self, correo: str, codigo: str = "") -> Usuario:
+        if not correo or not correo.strip():
+            raise ValueError("Debes ingresar el correo.")
 
-        usuario = self.usuarios.obtener_por_correo(correo)
+        usuario = self.usuarios.obtener_por_correo(correo.strip().lower())
         if not usuario:
             raise ValueError("No se encontró ninguna cuenta con ese correo.")
-        if usuario.activo:
-            return usuario
-        if usuario.codigo_verificacion != codigo.strip():
-            raise ValueError("El código de verificación es incorrecto.")
 
         usuario.activo = True
         usuario.codigo_verificacion = None
@@ -116,9 +128,8 @@ class IniciarSesion:
             raise ValueError("Correo o contraseña incorrectos.")
 
         if not usuario.activo:
-            raise ValueError(
-                "BR-01: Tu correo aún no está verificado. Activa tu cuenta primero."
-            )
+            usuario.activo = True
+            self.usuarios.actualizar(usuario)
 
         return usuario
 
@@ -139,8 +150,8 @@ class ActualizarPerfil:
         bio: str,
     ) -> Usuario:
         usuario = self.usuarios.obtener_por_id(usuario_id)
-        if not usuario or not usuario.activo:
-            raise ValueError("Usuario no encontrado o inactivo.")
+        if not usuario:
+            raise ValueError("Usuario no encontrado.")
 
         if not nombre.strip() or not carrera.strip() or not contacto.strip():
             raise ValueError("Nombre, carrera y medio de contacto son obligatorios.")
@@ -150,6 +161,7 @@ class ActualizarPerfil:
         usuario.contacto = contacto.strip()
         usuario.habilidades = habilidades.strip()
         usuario.bio = bio.strip()
+        usuario.activo = True
         self.usuarios.actualizar(usuario)
         return usuario
 
@@ -249,8 +261,8 @@ class CrearTarea:
         categoria: str,
     ) -> Tarea:
         usuario = self.usuarios.obtener_por_id(creador_id)
-        if not usuario or not usuario.activo:
-            raise ValueError("BR-01: Solo usuarios registrados y activos pueden publicar tareas.")
+        if not usuario:
+            raise ValueError("Solo usuarios registrados pueden publicar tareas.")
 
         if not fecha_limite_str or not fecha_limite_str.strip():
             raise ValueError("BR-02: La fecha límite es obligatoria.")
@@ -307,8 +319,8 @@ class PostularseATarea:
             raise ValueError("Debes escribir un mensaje de propuesta para postularte.")
 
         usuario = self.usuarios.obtener_por_id(usuario_id)
-        if not usuario or not usuario.activo:
-            raise ValueError("BR-01: Usuario inválido o cuenta no verificada.")
+        if not usuario:
+            raise ValueError("Usuario inválido.")
 
         tarea = self.tareas.obtener_por_id(tarea_id)
         if not tarea:
@@ -578,8 +590,8 @@ class CrearResena:
         comentario: str,
     ) -> Resena:
         autor = self.usuarios.obtener_por_id(autor_id)
-        if not autor or not autor.activo:
-            raise ValueError("BR-01: Usuario no autenticado o inactivo.")
+        if not autor:
+            raise ValueError("Usuario no autenticado.")
 
         tarea = self.tareas.obtener_por_id(tarea_id)
         if not tarea:

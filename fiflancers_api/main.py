@@ -33,7 +33,7 @@ from application.casos_uso import (
     GestionarNotificaciones,
 )
 
-app = FastAPI(title="FIFLancers API", version="3.1.0")
+app = FastAPI(title="FIFLancers API", version="3.2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -55,7 +55,7 @@ notificaciones_repo = NotificacionRepositorySQLite()
 resenas_repo = ResenaRepositorySQLite()
 silencios_repo = SilencioRepositorySQLite()
 
-registrar_usuario_uc = RegistrarUsuario(usuarios_repo, validador)
+registrar_usuario_uc = RegistrarUsuario(usuarios_repo, validador, notificaciones_repo)
 verificar_correo_uc = VerificarCorreo(usuarios_repo)
 iniciar_sesion_uc = IniciarSesion(usuarios_repo, validador)
 actualizar_perfil_uc = ActualizarPerfil(usuarios_repo)
@@ -115,7 +115,7 @@ class RegistroRequest(BaseModel):
 
 class VerificarCorreoRequest(BaseModel):
     correo: str
-    codigo: str
+    codigo: Optional[str] = ""
 
 
 class LoginRequest(BaseModel):
@@ -172,7 +172,7 @@ class SilenciarRequest(BaseModel):
 @app.post("/api/auth/registro")
 def api_registro(req: RegistroRequest):
     try:
-        usuario = registrar_usuario_uc.ejecutar(
+        resultado = registrar_usuario_uc.ejecutar(
             nombre=req.nombre,
             correo=req.correo,
             password=req.password,
@@ -181,13 +181,23 @@ def api_registro(req: RegistroRequest):
             bio=req.bio,
             contacto=req.contacto or "",
         )
-        print(
-            f"[VERIFICACIÓN CORREO] Código para {usuario.correo}: {usuario.codigo_verificacion}"
-        )
+        usuario = resultado["usuario"]
+        codigo_simulado = resultado["codigo_simulado"]
         return {
-            "mensaje": "Registro exitoso. Ingresa el código para verificar tu correo.",
+            "mensaje": f"Registro completado. Se envió una notificación con tu código simulado: {codigo_simulado}.",
             "correo": usuario.correo,
-            "codigo_verificacion_demo": usuario.codigo_verificacion,
+            "codigo_simulado": codigo_simulado,
+            "usuario": {
+                "id": str(usuario.id),
+                "nombre": usuario.nombre,
+                "correo": usuario.correo,
+                "carrera": usuario.carrera,
+                "contacto": usuario.contacto,
+                "habilidades": usuario.habilidades,
+                "bio": usuario.bio,
+                "promedio_calificacion": 0,
+                "total_resenas": 0,
+            },
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -196,9 +206,9 @@ def api_registro(req: RegistroRequest):
 @app.post("/api/auth/verificar")
 def api_verificar_correo(req: VerificarCorreoRequest):
     try:
-        usuario = verificar_correo_uc.ejecutar(correo=req.correo, codigo=req.codigo)
+        usuario = verificar_correo_uc.ejecutar(correo=req.correo, codigo=req.codigo or "")
         return {
-            "mensaje": "Correo verificado correctamente. Ya puedes iniciar sesión.",
+            "mensaje": "Cuenta verificada correctamente. Ya puedes iniciar sesión.",
             "usuario_id": str(usuario.id),
         }
     except ValueError as e:
