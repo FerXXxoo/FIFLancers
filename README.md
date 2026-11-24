@@ -134,5 +134,5 @@ uvicorn main:app --reload --port 8000
 * **Diagrama de arquitectura:**
 * <img width="4920" height="3089" alt="Diagrama_de_arquitectura_FIFLancers" src="https://github.com/user-attachments/assets/f44be1ff-e57d-4a51-b79c-6c1da8c6c505" />
 
-* **Registros de decisiones (ADRs):** `docs/adr/`
-* **Video de explicación y demostración:** <Enlace al video en YouTube o Google Drive>
+* **Registros de decisiones (ADRs):**
+* **Video de explicación y demostración:** <https://drive.google.com/drive/folders/1JuM0eWkmOV3VhPrBeJkNqFD9NMOgtROi?usp=sharing>
