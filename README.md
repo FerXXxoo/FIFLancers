@@ -56,6 +56,8 @@ FIFLancers/
 
 <img width="4920" height="3089" alt="Diagrama_de_arquitectura_FIFLancers" src="https://github.com/user-attachments/assets/b5897dbd-f9aa-46c7-9815-2d2a84aa5cc5" />
 
+<img width="3021" height="8192" alt="diagrama_mermaid" src="https://github.com/user-attachments/assets/ce62c6c1-6e51-4ed8-ae7b-0e34e509f5b8" />
+
 
 El backend está estructurado bajo **Clean Architecture**, respetando la regla de dependencia: las capas internas definen las reglas y contratos del negocio sin conocer detalles de HTTP, frameworks web o motores de base de datos.
 
